@@ -41,10 +41,10 @@ async def call_check_transaction_status(request: ToolRequest):
         result = transaction_status(initiator_source_address)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) 
 
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", 10000))
     print(f"Starting MCP server with HTTP transport on {host}:{port}...")
     uvicorn.run(app, host=host, port=port)
