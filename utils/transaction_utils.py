@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import psycopg2
 from dateutil import parser
 from requests.exceptions import RequestException
-from google import genai
+import google.generativeai as genai
 from google.genai import types
 from rich.console import Console
 
@@ -43,7 +43,8 @@ BIT_PONDER_CONTAINER = "/stage-bit-ponder"
 if not GEMINI_API_KEY:
     raise ValueError("Missing GEMINI_API_KEY in .env file.")
 try:
-    genai_client = genai.Client(api_key=GEMINI_API_KEY)
+    # genai_client = genai.Client(api_key=GEMINI_API_KEY)
+    genai.configure(api_key=GEMINI_API_KEY)
 except ValueError as e:
     raise ValueError(f"Failed to initialize Gemini client: {e}")
 
@@ -131,10 +132,15 @@ def fetch_logs(create_id: str, start_time: int, end_time: int, container: str, l
             f"Logs:\n{log_result}"
         )
         try:
-            gemini_response = genai_client.models.generate_content(
-                model="gemini-2.5-pro-exp-03-25",
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            # gemini_response = genai_client.models.generate_content(
+            #     model="gemini-2.5-pro-exp-03-25",
+            #     contents=prompt,
+            #     config=types.GenerateContentConfig(temperature=0)
+            # )
+            gemini_response = model.generate_content(
                 contents=prompt,
-                config=types.GenerateContentConfig(temperature=0)
+                generation_config=genai.types.GenerationConfig(temperature=0)
             )
             gemini_output = gemini_response.text.strip() if gemini_response.text else "No"
             is_order_created = gemini_output == "Yes"
@@ -170,10 +176,15 @@ def analyze_bit_ponder_logs(logs: list, source_swap_id: str, destination_swap_id
         f"Logs:\n{filtered_log_result}"
     )
     try:
-        gemini_response = genai_client.models.generate_content(
-            model="gemini-2.5-pro-exp-03-25",
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        # gemini_response = genai_client.models.generate_content(
+        #     model="gemini-2.5-pro-exp-03-25",
+        #     contents=prompt,
+        #     config=types.GenerateContentConfig(temperature=0)
+        # )
+        gemini_response = model.generate_content(
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0)
+            generation_config=genai.types.GenerationConfig(temperature=0)
         )
         return gemini_response.text.strip() if gemini_response.text else "No analysis available."
     except Exception as e:
