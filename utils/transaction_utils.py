@@ -276,6 +276,8 @@ def transaction_status(initiator_source_address: str) -> str:
         cobi_initiated = False
         user_redeemed = False
         cobi_redeemed = False
+        user_refunded = False  
+        cobi_refunded = False
         
         if matched_order_result.get("status") == "Ok" and matched_order_result.get("result"):
             result_data = matched_order_result.get("result", {})
@@ -338,6 +340,22 @@ def transaction_status(initiator_source_address: str) -> str:
                 if redeem_tx_hash:
                     cobi_redeemed = True
                     result_str += f"Cobi has redeemed the transaction for create_id '{create_id}'.\n"
+
+            # Check user refund
+            if result_data.get("source_swap"):
+                source_swap = result_data["source_swap"]
+                refund_tx_hash = source_swap.get("refund_tx_hash", "")
+                if refund_tx_hash:
+                    user_refunded = True
+                    result_str += f"User has been refunded for create_id '{create_id}'.\n"
+            
+            # Check Cobi refund
+            if result_data.get("destination_swap"):
+                destination_swap = result_data["destination_swap"]
+                refund_tx_hash = destination_swap.get("refund_tx_hash", "")
+                if refund_tx_hash:
+                    cobi_refunded = True
+                    result_str += f"Cobi has been refunded for create_id '{create_id}'.\n"
         
         # Final summary
         result_str += "\nFinal Transaction Status Summary:\n"
@@ -351,6 +369,8 @@ def transaction_status(initiator_source_address: str) -> str:
         result_str += f"- Cobi Initiated: {'Yes' if cobi_initiated else 'No'}\n"
         result_str += f"- User Redeemed: {'Yes' if user_redeemed else 'No'}\n"
         result_str += f"- Cobi Redeemed: {'Yes' if cobi_redeemed else 'No'}\n"
+        result_str += f"- User Refunded: {'Yes' if user_refunded else 'No'}\n" 
+        result_str += f"- Cobi Refunded: {'Yes' if cobi_refunded else 'No'}\n"
     
     return result_str
 
