@@ -8,7 +8,6 @@ import psycopg2
 from dateutil import parser
 from requests.exceptions import RequestException
 import google.generativeai as genai
-from google.genai import types
 from rich.console import Console
 
 # Initialize rich console
