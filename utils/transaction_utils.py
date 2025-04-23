@@ -12,7 +12,9 @@ from dateutil import parser
 from requests.exceptions import RequestException
 from google import genai
 from google.genai import types
-from rich.console import Console  # Added for rich logging
+from rich.console import Console
+from openai import OpenAI
+from requests.exceptions import RequestException
 
 # Initialize rich console
 console = Console()
@@ -26,6 +28,8 @@ MATCHED_ORDER_URL = "https://orderbook-v2-staging.hashira.io/id/{create_id}/matc
 TOKEN = os.getenv("TOKEN")
 API_TOKEN = f"Bearer {TOKEN}"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")
+
 DB_CONFIG = {
     "dbname": os.getenv("DB_NAME"),
     "user": os.getenv("DB_USER"),
@@ -46,6 +50,13 @@ try:
     genai_client = genai.Client(api_key=GEMINI_API_KEY)
 except ValueError as e:
     raise ValueError(f"Failed to initialize Gemini client: {e}")
+
+# if not OPENAI_API_KEY:
+#     raise ValueError("Missing OPENAI_API_KEY in .env file.")
+# try:
+#     openai_client = OpenAI(api_key=OPENAI_API_KEY)
+# except ValueError as e:
+#     raise ValueError(f"Failed to initialize OPENAI client: {e}")
 
 def fetch_db_info(initiator_source_address: str) -> Dict[str, Any]:
     """Fetch the latest create_orders record for the initiator source address."""
@@ -107,10 +118,25 @@ def fetch_logs(create_id: str, start_time: int, end_time: int, limit: int = DEFA
             )
             gemini_output = gemini_response.text.strip() if gemini_response.text else "No"
             is_order_created = gemini_output == "Yes"
+
+            # openai_response = openai_client.chat.completions.create(
+            #     model='gpt-3.5-turbo',
+            #     messages=[
+            #         {"role": "system", "content": "You are a log analysis assistant. Provide concise answers."},
+            #         {"role": "user", "content": prompt}
+            #     ],
+            #     temperature=0,
+            #     max_tokens=10
+            # )
+
+            # openai_output = openai_response.choices[0].message.content.strip()
+            # is_order_created = openai_output == "Yes"
+
         except Exception as e:
             # Fallback to manual check if Gemini fails
             is_order_created = any(create_id in msg for msg in raw_logs)
             log_result += f"\nGemini API error: {str(e)}. Falling back to manual check."
+            # log_result += f"\nOPENAI API error: {str(e)}. Falling back to manual check."
 
         return {
             "is_order_created": is_order_created,
