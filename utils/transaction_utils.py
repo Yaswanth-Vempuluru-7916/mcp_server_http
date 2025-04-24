@@ -22,6 +22,15 @@ MATCHED_ORDER_URL = "https://orderbook-v2-staging.hashira.io/id/{create_id}/matc
 TOKEN = os.getenv("TOKEN")
 API_TOKEN = f"Bearer {TOKEN}"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# CREATE_ID = "8c0692efc8b0f1ffc0554c46b63f9fbe5a00b28d064b0ebb27a2acdf10453993"
+# arbitrum_sepolia  --> bitcoin_testnet 
+# CREATE_ID = "401844f413bd36eea9d30b5487f7e2bfd0df5c9b8fa6d29fbc6ca3ac0c3beae1"
+# bitcoin_testnet  --> arbitrum_sepolia
+# CREATE_ID = "ed5c8f040cf59f6f04d46ce37f712bd86c1dccdb283766e0dfa8ec8f10764143"
+# arbitrum_sepolia  --> starknet_sepolia 
+# CREATE_ID = "9f6c73239f7cd9e1bed9aa2d8f07c8c24bbd724b481020a2a1483296a15a77f6"
+# starknet_sepolia -->  arbitrum_sepolia
+CREATE_ID = "2def3eb62b4b546defab9a658eb1024305d67c7607d83ec531ce47896bdf8fce"
 
 DB_CONFIG = {
     "dbname": os.getenv("DB_NAME"),
@@ -42,7 +51,6 @@ BIT_PONDER_CONTAINER = "/stage-bit-ponder"
 if not GEMINI_API_KEY:
     raise ValueError("Missing GEMINI_API_KEY in .env file.")
 try:
-    # genai_client = genai.Client(api_key=GEMINI_API_KEY)
     genai.configure(api_key=GEMINI_API_KEY)
 except ValueError as e:
     raise ValueError(f"Failed to initialize Gemini client: {e}")
@@ -54,17 +62,21 @@ def fetch_db_info(initiator_source_address: str) -> Dict[str, Any]:
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cursor = conn.cursor()
-        # sql_query = "SELECT create_id, source_chain, destination_chain, created_at FROM create_orders WHERE initiator_source_address = %s ORDER BY created_at DESC LIMIT 1"
-        # cursor.execute(sql_query, (initiator_source_address,))
         sql_query = """
             SELECT create_id, source_chain, destination_chain, created_at 
             FROM create_orders 
-            WHERE initiator_source_address = %s 
-            AND (source_chain = 'bitcoin_testnet' OR destination_chain = 'bitcoin_testnet') 
-            ORDER BY created_at ASC 
-            LIMIT 1
+            WHERE create_id = %s
             """
-        cursor.execute(sql_query, (initiator_source_address,))
+        cursor.execute(sql_query, (CREATE_ID,))
+        # sql_query = """
+        #     SELECT create_id, source_chain, destination_chain, created_at 
+        #     FROM create_orders 
+        #     WHERE initiator_source_address = %s 
+        #     AND (source_chain = 'bitcoin_testnet' OR destination_chain = 'bitcoin_testnet') 
+        #     ORDER BY created_at ASC 
+        #     LIMIT 1
+        #     """
+        # cursor.execute(sql_query, (initiator_source_address,))
         columns = [desc[0] for desc in cursor.description]
         result = cursor.fetchone()
         if result:
@@ -132,11 +144,6 @@ def fetch_logs(create_id: str, start_time: int, end_time: int, container: str, l
         )
         try:
             model = genai.GenerativeModel("gemini-1.5-flash")
-            # gemini_response = genai_client.models.generate_content(
-            #     model="gemini-2.5-pro-exp-03-25",
-            #     contents=prompt,
-            #     config=types.GenerateContentConfig(temperature=0)
-            # )
             gemini_response = model.generate_content(
                 contents=prompt,
                 generation_config=genai.types.GenerationConfig(temperature=0)
@@ -156,38 +163,58 @@ def fetch_logs(create_id: str, start_time: int, end_time: int, container: str, l
     except RequestException as e:
         raise RuntimeError(f"Request failed for container '{container}': {e}") from e
 
-def analyze_bit_ponder_logs(logs: list, source_swap_id: str, destination_swap_id: str, create_id: str) -> str:
-    """Analyze filtered bit-ponder logs using Gemini for detailed insights."""
-    # Filter logs containing source_swap_id or destination_swap_id
+def analyze_bit_ponder_logs(
+    logs: list,
+    source_swap_id: str,
+    destination_swap_id: str,
+    create_id: str,
+    source_chain: str,
+    destination_chain: str,
+    container: str
+) -> str:
+    """Analyze filtered logs using Gemini for a narrative summary and include filtered logs."""
+    # Filter logs containing source_swap_id or destination_swap_id or create_id
     filtered_logs = [
         log for log in logs
-        if (source_swap_id and source_swap_id in log) or (destination_swap_id and destination_swap_id in log)
+        if (create_id and create_id in log) or (source_swap_id and source_swap_id in log) or (destination_swap_id and destination_swap_id in log)
     ]
     filtered_log_result = "\n".join(filtered_logs) if filtered_logs else "No relevant logs found."
 
-    # Use Gemini to analyze filtered logs
+    # Gemini prompt for narrative summary
     prompt = (
         f"Thoroughly analyze the following logs related to create_id '{create_id}', which contain either "
         f"source_swap_id '{source_swap_id}' or destination_swap_id '{destination_swap_id}'. "
-        "Provide a detailed summary of the transaction's progress, including any initiation, redemption, or errors. "
+        f"The source chain is '{source_chain}' and the destination chain is '{destination_chain}'. "
+        f"The logs are from the '{container}' container. "
+        "Provide a detailed narrative summary of the transaction's progress, including any order creation, initiation, redemption, or errors. "
+        "Use the following rules to interpret the logs based on the chain and container:\n"
+        "- For order creation: Only check for 'order created' in '/staging-evm-relay' logs if source_chain is 'arbitrum_sepolia'.\n"
+        "- If source_chain is 'bitcoin_testnet' and container is '/stage-bit-ponder': 'HTLC initiated' indicates user initiation, 'Redeemed' indicates Cobi redeem.\n"
+        "- If destination_chain is 'bitcoin_testnet' and container is '/stage-bit-ponder': 'HTLC initiated' indicates Cobi initiation, 'Redeemed' indicates user redeem.\n"
+        "- If source_chain is 'arbitrum_sepolia' and container is '/staging-evm-relay': 'order initiated' indicates user initiation.\n"
+        "- If destination_chain is 'arbitrum_sepolia' and container is '/staging-evm-relay': 'order redeemed' indicates user redeem.\n"
         "Focus only on the information present in the logs. Do not generate or assume any information not explicitly stated. "
         "If no logs are provided, state that no relevant logs were found and do not proceed with analysis.\n\n"
         f"Logs:\n{filtered_log_result}"
     )
     try:
         model = genai.GenerativeModel("gemini-1.5-flash")
-        # gemini_response = genai_client.models.generate_content(
-        #     model="gemini-2.5-pro-exp-03-25",
-        #     contents=prompt,
-        #     config=types.GenerateContentConfig(temperature=0)
-        # )
         gemini_response = model.generate_content(
             contents=prompt,
             generation_config=genai.types.GenerationConfig(temperature=0)
         )
-        return gemini_response.text.strip() if gemini_response.text else "No analysis available."
+        gemini_output = gemini_response.text.strip() if gemini_response.text else "No analysis available."
+        
+        # Combine filtered logs and Gemini analysis
+        return (
+            f"Filtered Logs:\n{filtered_log_result}\n\n"
+            f"Gemini Analysis:\n{gemini_output}"
+        )
     except Exception as e:
-        return f"Gemini API error during bit-ponder log analysis: {str(e)}"
+        return (
+            f"Filtered Logs:\n{filtered_log_result}\n\n"
+            f"Gemini Analysis:\nGemini API error during log analysis: {str(e)}"
+        )
 
 def check_matched_order(create_id: str) -> Dict[str, Any]:
     """Check the matched order status for the given create_id."""
@@ -207,7 +234,6 @@ def transaction_status(initiator_source_address: str) -> str:
     source_chain = None
     destination_chain = None
     unix_timestamp = None
-    
     # Step 1: Fetch database info
     try:
         db_result = fetch_db_info(initiator_source_address)
@@ -262,6 +288,13 @@ def transaction_status(initiator_source_address: str) -> str:
             else:
                 result_str += f"\nOrder not confirmed: create_id '{create_id}' not found in {EVM_RELAY_CONTAINER} logs.\n"
             result_str += f"Logs from {EVM_RELAY_CONTAINER} (±{LOG_TIME_WINDOW}s around {unix_timestamp}):\n{raw_logs}\n"
+            
+            # Analyze EVM relay logs for chain-specific patterns
+            if source_swap_id or destination_swap_id:
+                evm_analysis = analyze_bit_ponder_logs(
+                    log_result["raw_log_list"], source_swap_id, destination_swap_id, create_id, source_chain, destination_chain, EVM_RELAY_CONTAINER
+                )
+                result_str += f"\nAnalysis of filtered {EVM_RELAY_CONTAINER} logs:\n{evm_analysis}\n"
         except Exception as e:
             result_str += f"\nLogs from {EVM_RELAY_CONTAINER}: Error fetching logs: {str(e)}\n"
             return result_str
@@ -276,7 +309,7 @@ def transaction_status(initiator_source_address: str) -> str:
         cobi_initiated = False
         user_redeemed = False
         cobi_redeemed = False
-        user_refunded = False  
+        user_refunded = False
         cobi_refunded = False
         
         if matched_order_result.get("status") == "Ok" and matched_order_result.get("result"):
@@ -307,9 +340,9 @@ def transaction_status(initiator_source_address: str) -> str:
                         # Analyze filtered bit-ponder logs
                         if source_swap_id or destination_swap_id:
                             bit_ponder_analysis = analyze_bit_ponder_logs(
-                                bit_ponder_raw_logs, source_swap_id, destination_swap_id, create_id
+                                bit_ponder_raw_logs, source_swap_id, destination_swap_id, create_id, source_chain, destination_chain, BIT_PONDER_CONTAINER
                             )
-                            result_str += f"\nGemini analysis of filtered {BIT_PONDER_CONTAINER} logs:\n{bit_ponder_analysis}\n"
+                            result_str += f"\nAnalysis of filtered {BIT_PONDER_CONTAINER} logs:\n{bit_ponder_analysis}\n"
                         else:
                             result_str += f"\nNo source_swap_id or destination_swap_id available for filtering {BIT_PONDER_CONTAINER} logs.\n"
                     except Exception as e:
@@ -369,11 +402,10 @@ def transaction_status(initiator_source_address: str) -> str:
         result_str += f"- Cobi Initiated: {'Yes' if cobi_initiated else 'No'}\n"
         result_str += f"- User Redeemed: {'Yes' if user_redeemed else 'No'}\n"
         result_str += f"- Cobi Redeemed: {'Yes' if cobi_redeemed else 'No'}\n"
-        result_str += f"- User Refunded: {'Yes' if user_refunded else 'No'}\n" 
+        result_str += f"- User Refunded: {'Yes' if user_refunded else 'No'}\n"
         result_str += f"- Cobi Refunded: {'Yes' if cobi_refunded else 'No'}\n"
     
     return result_str
-
 # # ****************************Old working code****************************#
 
 # # client_http.py
