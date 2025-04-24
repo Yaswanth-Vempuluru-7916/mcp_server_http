@@ -51,7 +51,7 @@ DB_CONFIG = {
 }
 LOG_TIME_WINDOW = 432000  # 5 days in seconds
 BIT_PONDER_TIME_WINDOW = 7200  # 2 hours (kept for compatibility, not used)
-DEFAULT_LIMIT = 1000
+DEFAULT_LIMIT = 5000
 MAX_LOOKBACK = 30 * 24 * 3600  # 30 days
 API_TIMEOUT = 10  # seconds
 EVM_RELAY_CONTAINER = "/staging-evm-relay"
