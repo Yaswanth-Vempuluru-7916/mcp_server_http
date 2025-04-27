@@ -106,23 +106,24 @@ def filter_logs(
             f"Gemini Analysis:\nGemini API error during log analysis: {str(e)}"
         )
 
-def transaction_status(initiator_source_address: str) -> str:
-    result_str = f"Transaction status for initiator_source_address '{initiator_source_address}':\n"
+def transaction_status(initiator_source_address: str = None, create_id: str = None) -> str:
+    input_identifier = f"create_id '{create_id}'" if create_id else f"initiator_source_address '{initiator_source_address}'"
+    result_str = f"Transaction status for {input_identifier}:\n"
     create_order_success = False
-    create_id = None
+    order_id = None
     source_chain = None
     destination_chain = None
     unix_timestamp = None
     secret_hash = None
     
     try:
-        logger.info(f"Starting transaction status check for initiator_source_address: {initiator_source_address}")
+        logger.info(f"Starting transaction status check for {input_identifier}")
         try:
-            db_result = fetch_db_info(initiator_source_address)
+            db_result = fetch_db_info(initiator_source_address, create_id)
             if db_result:
                 result_str += "Database results from create_orders:\n"
                 result_str += "\n".join([f"{k}: {v}" for k, v in db_result.items()]) + "\n"
-                create_id = db_result.get("create_id")
+                order_id = db_result.get("create_id")
                 source_chain = db_result.get("source_chain")
                 destination_chain = db_result.get("destination_chain")
                 secret_hash = db_result.get("secret_hash")
@@ -136,8 +137,8 @@ def transaction_status(initiator_source_address: str) -> str:
                         logger.error(f"Failed to parse timestamp '{timestamp_str}': {e}")
                         result_str += f"Failed to parse timestamp '{timestamp_str}': {e}\n"
             else:
-                logger.warning(f"No data found for initiator_source_address '{initiator_source_address}' in create_orders.")
-                result_str += f"No data found for initiator_source_address '{initiator_source_address}' in create_orders.\n"
+                logger.warning(f"No data found for {input_identifier} in create_orders.")
+                result_str += f"No data found for {input_identifier} in create_orders.\n"
                 return result_str
         except Exception as e:
             logger.error(f"Database query error: {str(e)}")
@@ -146,22 +147,22 @@ def transaction_status(initiator_source_address: str) -> str:
         
         source_swap_id = None
         destination_swap_id = None
-        if create_id:
+        if order_id:
             try:
-                matched_order_result = fetch_matched_order_ids(create_id)
+                matched_order_result = fetch_matched_order_ids(order_id)
                 if matched_order_result:
                     source_swap_id = matched_order_result.get("source_swap_id")
                     destination_swap_id = matched_order_result.get("destination_swap_id")
-                    result_str += f"\nMatched order IDs for create_id '{create_id}':\n"
+                    result_str += f"\nMatched order IDs for create_id (create_order_id) '{order_id}':\n"
                     result_str += f"- Source Swap ID: {source_swap_id or 'Not found'}\n"
                     result_str += f"- Destination Swap ID: {destination_swap_id or 'Not found'}\n"
                 else:
-                    result_str += f"No matched orders found for create_id '{create_id}'.\n"
+                    result_str += f"No matched orders found for create_id (create_order_id) '{order_id}'.\n"
             except Exception as e:
                 logger.error(f"Matched orders query error: {str(e)}")
                 result_str += f"Matched orders query error: {str(e)}\n"
         
-        if create_id and unix_timestamp:
+        if order_id and unix_timestamp:
             start_time = unix_timestamp
             containers_to_fetch = []  
             
@@ -191,22 +192,22 @@ def transaction_status(initiator_source_address: str) -> str:
                     else:
                         end_time = unix_timestamp + Config.LOG_TIME_WINDOW
                     
-                    log_result = fetch_logs(create_id, start_time, end_time, container)
+                    log_result = fetch_logs(order_id, start_time, end_time, container)
                     if container == Config.EVM_RELAY_CONTAINER:
-                        create_order_success = analyze_evm_relay_logs(create_id, log_result["raw_log_list"])
+                        create_order_success = analyze_evm_relay_logs(order_id, log_result["raw_log_list"])
                         if create_order_success:
-                            result_str += f"\nOrder created successfully: create_id '{create_id}' found in {container} logs.\n"
+                            result_str += f"\nOrder created successfully: create_id (order_id) '{order_id}' found in {container} logs.\n"
                         else:
-                            result_str += f"\nOrder not confirmed: create_id '{create_id}' not found in {container} logs.\n"
+                            result_str += f"\nOrder not confirmed: create_id (order_id) '{order_id}' not found in {container} logs.\n"
                     
                     if container == Config.COBI_V2_CONTAINER:
-                        if source_swap_id or destination_swap_id or secret_hash or create_id:
+                        if source_swap_id or destination_swap_id or secret_hash or order_id:
                             analysis = filter_logs(
                                 log_result["raw_log_list"], 
                                 source_swap_id, 
                                 destination_swap_id, 
                                 secret_hash,
-                                create_id, 
+                                order_id, 
                                 source_chain, 
                                 destination_chain, 
                                 container
@@ -215,13 +216,13 @@ def transaction_status(initiator_source_address: str) -> str:
                         else:
                             result_str += f"\nNo identifiers available for filtering {container} logs.\n"
                     else:
-                        if source_swap_id or destination_swap_id or secret_hash or create_id:
+                        if source_swap_id or destination_swap_id or secret_hash or order_id:
                             analysis = filter_logs(
                                 log_result["raw_log_list"], 
                                 source_swap_id, 
                                 destination_swap_id, 
                                 secret_hash,
-                                create_id, 
+                                order_id, 
                                 source_chain, 
                                 destination_chain, 
                                 container
@@ -231,10 +232,10 @@ def transaction_status(initiator_source_address: str) -> str:
                     logger.error(f"Error fetching logs from {container}: {str(e)}")
                     result_str += f"\nLogs from {container}: Error fetching logs: {str(e)}\n"
         
-        if create_id:
+        if order_id:
             try:
-                matched_order_result = check_matched_order(create_id)
-                result_str += f"\nMatched order API response for create_id '{create_id}':\n{str(matched_order_result)}\n"
+                matched_order_result = check_matched_order(order_id)
+                result_str += f"\nMatched order API response for create_id (order_id) '{order_id}':\n{str(matched_order_result)}\n"
                 
                 is_matched = False
                 user_initiated = False
@@ -248,7 +249,7 @@ def transaction_status(initiator_source_address: str) -> str:
                     result_data = matched_order_result.get("result", {})
                     if result_data.get("source_swap") or result_data.get("destination_swap"):
                         is_matched = True
-                        result_str += f"\nOrder matched successfully for create_id '{create_id}'.\n"
+                        result_str += f"\nOrder matched successfully for create_id (order_id) '{order_id}'.\n"
                     
                     if result_data.get("source_swap"):
                         source_swap = result_data["source_swap"]
@@ -257,7 +258,7 @@ def transaction_status(initiator_source_address: str) -> str:
                         required_confirmations = source_swap.get("required_confirmations", 1)
                         if initiate_tx_hash and current_confirmations >= required_confirmations:
                             user_initiated = True
-                            result_str += f"User has initiated the transaction for create_id '{create_id}'.\n"
+                            result_str += f"User has initiated the transaction for create_id (order_id) '{order_id}'.\n"
                     
                     if result_data.get("destination_swap"):
                         destination_swap = result_data["destination_swap"]
@@ -266,35 +267,35 @@ def transaction_status(initiator_source_address: str) -> str:
                         required_confirmations = destination_swap.get("required_confirmations", 1)
                         if initiate_tx_hash and current_confirmations >= required_confirmations:
                             cobi_initiated = True
-                            result_str += f"Cobi has initiated the transaction for create_id '{create_id}'.\n"
+                            result_str += f"Cobi has initiated the transaction for create_id (order_id) '{order_id}'.\n"
                     
                     if result_data.get("source_swap"):
                         source_swap = result_data["source_swap"]
                         redeem_tx_hash = source_swap.get("redeem_tx_hash", "")
                         if redeem_tx_hash:
                             user_redeemed = True
-                            result_str += f"User has redeemed the transaction for create_id '{create_id}'.\n"
+                            result_str += f"User has redeemed the transaction for create_id (order_id) '{order_id}'.\n"
                     
                     if result_data.get("destination_swap"):
                         destination_swap = result_data["destination_swap"]
                         redeem_tx_hash = destination_swap.get("redeem_tx_hash", "")
                         if redeem_tx_hash:
                             cobi_redeemed = True
-                            result_str += f"Cobi has redeemed the transaction for create_id '{create_id}'.\n"
+                            result_str += f"Cobi has redeemed the transaction for create_id (order_id) '{order_id}'.\n"
                     
                     if result_data.get("source_swap"):
                         source_swap = result_data["source_swap"]
                         refund_tx_hash = source_swap.get("refund_tx_hash", "")
                         if refund_tx_hash:
                             user_refunded = True
-                            result_str += f"User has been refunded for create_id '{create_id}'.\n"
+                            result_str += f"User has been refunded for create_id (order_id) '{order_id}'.\n"
                     
                     if result_data.get("destination_swap"):
                         destination_swap = result_data["destination_swap"]
                         refund_tx_hash = destination_swap.get("refund_tx_hash", "")
                         if refund_tx_hash:
                             cobi_refunded = True
-                            result_str += f"Cobi has been refunded for create_id '{create_id}'.\n"
+                            result_str += f"Cobi has been refunded for create_id (order_id) '{order_id}'.\n"
                 
                 result_str += "\nFinal Transaction Status Summary:\n"
                 result_str += f"- Source Chain: {source_chain or 'Unknown'}\n"
@@ -308,12 +309,12 @@ def transaction_status(initiator_source_address: str) -> str:
                 result_str += f"- User Redeemed: {'Yes' if user_redeemed else 'No'}\n"
                 result_str += f"- Cobi Redeemed: {'Yes' if cobi_redeemed else 'No'}\n"
                 result_str += f"- User Refunded: {'Yes' if user_refunded else 'No'}\n"
-                result_str += f"- Cobi Refunded: {'Yes' if cobi_refunded else 'No'}\n"
+                result_str += f"- Cobi Refunded: {'Yes.tex' if cobi_refunded else 'No'}\n"
             except Exception as e:
-                logger.error(f"Error checking matched order for create_id '{create_id}': {str(e)}")
+                logger.error(f"Error checking matched order for create_id (order_id) '{order_id}': {str(e)}")
                 result_str += f"\nError checking matched order: {str(e)}\n"
         
-        logger.info(f"Transaction status check completed for initiator_source_address: {initiator_source_address}")
+        logger.info(f"Transaction status check completed for {input_identifier}")
         return result_str
     
     except Exception as e:
