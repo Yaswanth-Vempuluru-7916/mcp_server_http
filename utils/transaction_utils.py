@@ -20,10 +20,11 @@ except ValueError as e:
     raise ValueError(f"Failed to initialize Gemini client: {e}")
 
 def analyze_evm_relay_logs(create_id: str, logs: list) -> bool:
+    formatted_logs = '\n'.join(logs)
     prompt = (
         f"Analyze the following logs and determine if the order with create_id '{create_id}' was created. "
         "Return only 'Yes' if the create_id is found in the logs, or 'No' if it is not found.\n\n"
-        f"Logs:\n{'\n'.join(logs)}"
+        f"Logs:\n{formatted_logs}"
     )
     try:
         model = genai.GenerativeModel("gemini-1.5-flash")
