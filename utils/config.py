@@ -24,3 +24,4 @@ class Config:
     EVM_RELAY_CONTAINER = "/staging-evm-relay"
     BIT_PONDER_CONTAINER = "/stage-bit-ponder"
     COBI_V2_CONTAINER = "/staging-cobi-v2"
+    STARKNET_CONTAINER = "/staging-starknet-relayer"
