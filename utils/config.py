@@ -9,7 +9,6 @@ class Config:
     TOKEN = os.getenv("TOKEN")
     API_TOKEN = f"Bearer {TOKEN}" if TOKEN else None
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-    # CREATE_ID = "9c2684b55c78afea86b8cb2d565bed6344e923d82a053e8ba9355da15cfea8ff"
     
     DB_CONFIG = {
         "dbname": os.getenv("DB_NAME"),
@@ -19,10 +18,8 @@ class Config:
         "port": os.getenv("DB_PORT")
     }
     
-    LOG_TIME_WINDOW = 432000  # 5 days in seconds
-    BIT_PONDER_TIME_WINDOW = 7200  # 2 hours
     DEFAULT_LIMIT = 5000
-    MAX_LOOKBACK = 30 * 24 * 3600  # 30 days
+    MAX_LOOKBACK = 2595600
     API_TIMEOUT = 10  # seconds
     EVM_RELAY_CONTAINER = "/staging-evm-relay"
     BIT_PONDER_CONTAINER = "/stage-bit-ponder"

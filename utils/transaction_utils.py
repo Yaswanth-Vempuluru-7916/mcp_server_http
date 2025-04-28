@@ -166,14 +166,14 @@ def transaction_status(initiator_source_address: str = None, create_id: str = No
             start_time = unix_timestamp
             containers_to_fetch = []  
             
-            if source_chain == 'arbitrum_sepolia':
+            if source_chain == 'arbitrum_sepolia' or source_chain == 'ethereum_sepolia' or source_chain == 'citrea_testnet':
                 containers_to_fetch.append(Config.EVM_RELAY_CONTAINER)
             elif source_chain == 'bitcoin_testnet':
                 containers_to_fetch.append(Config.BIT_PONDER_CONTAINER)
             elif source_chain == 'starknet_sepolia':
                 logger.info("Skipping container fetch for source_chain starknet_sepolia")
             
-            if destination_chain == 'arbitrum_sepolia':
+            if destination_chain == 'arbitrum_sepolia' or destination_chain == 'ethereum_sepolia' or destination_chain == 'citrea_testnet':
                 containers_to_fetch.append(Config.EVM_RELAY_CONTAINER)
             elif destination_chain == 'bitcoin_testnet':
                 containers_to_fetch.append(Config.BIT_PONDER_CONTAINER)
@@ -187,17 +187,12 @@ def transaction_status(initiator_source_address: str = None, create_id: str = No
             
             for container in containers_to_fetch:
                 try:
-                    if container == Config.COBI_V2_CONTAINER:
-                        end_time = int(time.time())
-                    else:
-                        end_time = unix_timestamp + Config.LOG_TIME_WINDOW
-                    
-                    log_result = fetch_logs(order_id, start_time, end_time, container)
+                    log_result = fetch_logs(order_id, start_time, container)
                     log_key = container.lstrip('/')
                     result["logs"][log_key] = {
                         "raw_logs": log_result["raw_log_list"],
                         "start_time": start_time,
-                        "end_time": end_time
+                        "end_time": log_result["end_time"]  # Updated to use end_time from fetch_logs
                     }
                     
                     if container == Config.EVM_RELAY_CONTAINER:
