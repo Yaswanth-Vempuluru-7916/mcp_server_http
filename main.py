@@ -1,61 +1,93 @@
+# from fastapi import FastAPI, HTTPException
+# from fastapi.middleware.cors import CORSMiddleware
+# from pydantic import BaseModel
+# from typing import Optional
+# from utils.transaction_utils import transaction_status
+# import logging
+
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
+
+# app = FastAPI()
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["http://localhost:5173"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+# class TransactionStatusRequest(BaseModel):
+#     arguments: dict
+
+# @app.post("/tools/check_transaction_status")
+# async def check_transaction_status(request: TransactionStatusRequest):
+#     try:
+#         arguments = request.arguments
+#         if not arguments:
+#             raise HTTPException(status_code=400, detail="Invalid payload. Expected 'arguments' key.")
+        
+#         initiator_source_address = arguments.get("initiator_source_address")
+#         create_id = arguments.get("create_id")
+        
+#         if not initiator_source_address and not create_id:
+#             raise HTTPException(status_code=400, detail="Either initiator_source_address or create_id must be provided")
+        
+#         result = transaction_status(initiator_source_address, create_id)
+#         logger.info(f"Response sent: {result}")
+        
+#         # Convert the string result into the expected dictionary structure
+#         response = {
+#             "identifier": f"{'initiator_source_address' if initiator_source_address else 'create_id'} '{initiator_source_address or create_id}'",
+#             "database_results": {},  # Could parse result_str for database data if needed
+#             "matched_order_ids": {},  # Could parse for swap IDs if needed
+#             "logs": {},  # Could parse for log analysis if needed
+#             "matched_order_api": {},  # Could parse for API response if needed
+#             "status_summary": {},  # Could parse for summary if needed
+#             "errors": [],
+#             "status_text": result  # Store the original string for display
+#         }
+#         return response
+#     except Exception as e:
+#         logger.error(f"Error in check_transaction_status: {str(e)}", exc_info=True)
+#         error_response = {
+#             "identifier": "",
+#             "database_results": {},
+#             "matched_order_ids": {},
+#             "logs": {},
+#             "matched_order_api": {},
+#             "status_summary": {},
+#             "errors": [f"Server error: {str(e)}"],
+#             "status_text": f"Server error: {str(e)}"
+#         }
+#         return error_response
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from utils.transaction_utils import transaction_status
-import uvicorn
-import os
-from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+from utils.transaction_utils import transaction_status
+from utils.logging_setup import setup_logging
+import uvicorn
 
-load_dotenv()
+app = FastAPI()
+logger, console = setup_logging()
 
-app = FastAPI(title="Transaction Status Server")
-
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Adjust for your frontend URL
+    allow_origins=["http://localhost:5173"],  # Update with your frontend port (e.g., 5173 for Vite)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-class ToolRequest(BaseModel):
-    arguments: dict
 
-@app.get("/tools")
-async def list_tools():
-    return {
-        "tools": [
-            {
-                "name": "check_transaction_status",
-                "description": "Check the status of a transaction by initiator source address or create_id.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "initiator_source_address": {"type": "string"},
-                        "create_id": {"type": "string"}
-                    },
-                    "required": []  # No required fields, either one must be provided
-                }
-            }
-        ]
-    }
-
-@app.post("/tools/check_transaction_status")
-async def call_check_transaction_status(request: ToolRequest):
+@app.get("/api/transaction_status")
+async def get_transaction_status(create_id: str = None, initiator_source_address: str = None):
     try:
-        initiator_source_address = request.arguments.get("initiator_source_address")
-        create_id = request.arguments.get("create_id")
-        if not initiator_source_address and not create_id:
-            raise HTTPException(status_code=400, detail="Either initiator_source_address or create_id must be provided")
-        if initiator_source_address and create_id:
-            raise HTTPException(status_code=400, detail="Provide only one of initiator_source_address or create_id")
-        
         result = transaction_status(initiator_source_address, create_id)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) 
+        logger.error(f"Error processing transaction status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", 10000))
-    print(f"Starting MCP server with HTTP transport on {host}:{port}...")
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host="0.0.0.0", port=10000)
