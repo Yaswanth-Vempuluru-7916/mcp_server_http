@@ -67,14 +67,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from utils.transaction_utils import transaction_status
 from utils.logging_setup import setup_logging
 import uvicorn
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 logger, console = setup_logging()
 
+origins = os.getenv("ALLOW_ORIGINS", "http://localhost:5173").split(",")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Update with your frontend port (e.g., 5173 for Vite)
+    allow_origins=origins,  # Update with your frontend port (e.g., 5173 for Vite)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

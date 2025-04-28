@@ -9,7 +9,7 @@ class Config:
     TOKEN = os.getenv("TOKEN")
     API_TOKEN = f"Bearer {TOKEN}" if TOKEN else None
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-    CREATE_ID = "9c2684b55c78afea86b8cb2d565bed6344e923d82a053e8ba9355da15cfea8ff"
+    # CREATE_ID = "9c2684b55c78afea86b8cb2d565bed6344e923d82a053e8ba9355da15cfea8ff"
     
     DB_CONFIG = {
         "dbname": os.getenv("DB_NAME"),
