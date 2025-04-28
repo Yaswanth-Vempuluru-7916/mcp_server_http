@@ -62,19 +62,20 @@ def filter_logs(
     logger.info(f"Filtering identifiers: create_id='{create_id}', source_swap_id='{source_swap_id}', "
                 f"destination_swap_id='{destination_swap_id}', secret_hash='{secret_hash}'")
 
+    # Use a regular string with .format() to avoid backslash issues in f-string expressions
     prompt = (
-        f"Thoroughly analyze the following logs related to create_id '{create_id}', which may contain "
-        f"create_id '{create_id}', source_swap_id '{source_swap_id}', destination_swap_id '{destination_swap_id}', "
-        f"or secret_hash '{secret_hash}'. "
-        f"The source chain is '{source_chain}' and the destination chain is '{destination_chain}'. "
-        f"The logs are from the '{container}' container. "
+        "Thoroughly analyze the following logs related to create_id '{create_id}', which may contain "
+        "create_id '{create_id}', source_swap_id '{source_swap_id}', destination_swap_id '{destination_swap_id}', "
+        "or secret_hash '{secret_hash}'. "
+        "The source chain is '{source_chain}' and the destination chain is '{destination_chain}'. "
+        "The logs are from the '{container}' container. "
         "Provide a detailed narrative summary of the transaction's progress, including any order creation, initiation, redemption, refund, or errors. "
         "Use the following rules to interpret the logs based on the chain and container:\n"
         "- For order creation: Only check for 'order created' in '/staging-evm-relay' logs if source_chain is 'arbitrum_sepolia'. "
         "Look for create_id or secret_hash in these logs to identify order creation events.\n"
         "- If source_chain is 'bitcoin_testnet' and container is '/stage-bit-ponder': 'HTLC initiated' indicates user initiation, "
         "'Redeemed' indicates Cobi redeem. Look for source_swap_id or secret_hash.\n"
-        "- If destination_chain is 'bitcoin_testnet' and container is '/stage-bit-ponder': 'HTLC initiated' indicates Cobi initiation, "
+        "- If destination_chain is ' bitcoin_testnet' and container is '/stage-bit-ponder': 'HTLC initiated' indicates Cobi initiation, "
         "'Redeemed' indicates user redeem. Look for destination_swap_id or secret_hash.\n"
         "- If source_chain is 'arbitrum_sepolia' and container is '/staging-evm-relay': 'order initiated' indicates user initiation. "
         "Look for create_id, source_swap_id, or secret_hash in these logs.\n"
@@ -84,7 +85,16 @@ def filter_logs(
         "using create_id, source_swap_id, destination_swap_id, or secret_hash. These logs are not chain-specific.\n"
         "Focus only on the information present in the logs. Do not generate or assume any information not explicitly stated. "
         "If no logs are provided, state that no relevant logs were found and do not proceed with analysis.\n\n"
-        f"Logs:\n{filtered_log_result}"
+        "Logs:\n{filtered_log_result}"
+    ).format(
+        create_id=create_id,
+        source_swap_id=source_swap_id,
+        destination_swap_id=destination_swap_id,
+        secret_hash=secret_hash,
+        source_chain=source_chain,
+        destination_chain=destination_chain,
+        container=container,
+        filtered_log_result=filtered_log_result
     )
 
     try:
