@@ -5,6 +5,7 @@ from urllib.parse import quote_plus
 from requests.exceptions import RequestException
 from utils.config import Config
 from utils.logging_setup import setup_logging
+from math import floor
 
 logger, console = setup_logging()
 
@@ -23,20 +24,41 @@ def fetch_logs(create_id: str, start_time: int, container: str, end_time: Option
     # Respect MAX_LOOKBACK limit (e.g., 30d1h = 2,595,600 seconds)
     max_end_time = start_time + Config.MAX_LOOKBACK
     end_time = min(end_time, max_end_time)
-    
+    # 1988a35d6c0cf1693ed59a2abff1f1879c443800362e3fa49cc7b883e3c97ade
     # Define 1-week window size (7 days = 604,800 seconds)
-    # WEEK_SECONDS = 604_800
-    WEEK_SECONDS = 302_400 #1/2 week 
+    # WINDOW_SECONDS = 604_800
+    # WINDOW_SECONDS = 302_400 #1/2 week 
+    WINDOW_SECONDS = 172_800 #2 days
+    # Minimum window size to avoid redundant queries (e.g., 60 seconds)
+    MIN_WINDOW_SECONDS = 60
     query = quote_plus(f'{{container="{container}"}}')
     current_start = start_time
     raw_logs = []
     iteration = 0
+    seen_ranges = set()  # Track queried (start, end) ranges to avoid duplicates
+    max_iterations = floor(Config.MAX_LOOKBACK / WINDOW_SECONDS)  # e.g., floor(2,595,600 / 172,800) = 15
     # max_iterations = 5  # Limit iterations to prevent excessive queries (If 1 week)
-    max_iterations = 8  # Limit iterations to prevent excessive queries (if 0.5 week)
+    # max_iterations = 15  # Limit iterations to prevent excessive queries (if 0.5 week)
     
     while current_start < end_time and iteration < max_iterations:
         # Calculate end of the current 1-week window
-        current_end = min(current_start + WEEK_SECONDS, end_time)
+        current_end = min(current_start + WINDOW_SECONDS, end_time)
+
+        # Skip if the time range is too small (avoid redundant queries)
+        if current_end - current_start < MIN_WINDOW_SECONDS:
+            logger.info(f"Skipping iteration {iteration + 1}: time range {current_start} to {current_end} is too small (< {MIN_WINDOW_SECONDS} seconds)")
+            current_start = current_end
+            iteration += 1
+            continue
+
+        current_range = (current_start, current_end)
+        if current_range in seen_ranges:
+            logger.info(f"Skipping iteration {iteration + 1}: time range {current_start} to {current_end} already queried")
+            current_start = current_end
+            iteration += 1
+            continue
+        seen_ranges.add(current_range)
+
         url = f"{Config.BASE_URL}?query={query}&start={current_start}&end={current_end}&limit={limit}"
         
         try:
