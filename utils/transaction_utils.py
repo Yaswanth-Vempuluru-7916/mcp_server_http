@@ -50,18 +50,10 @@ def filter_logs(
     container: str
 ) -> dict:
     logger.info(f"Analyzing logs for create_id: {create_id}, container: {container}")
-    filtered_logs = [
-        log for log in logs
-        if (create_id and create_id in log) or 
-           (source_swap_id and source_swap_id in log) or 
-           (destination_swap_id and destination_swap_id in log) or 
-           (secret_hash and secret_hash in log)
-    ]
-    filtered_log_result = "\n".join(filtered_logs) if filtered_logs else "No relevant logs found."
-    logger.info(f"Filtered {len(filtered_logs)} logs for create_id: {create_id}")
+    
 
-    logger.info(f"Filtering identifiers: create_id='{create_id}', source_swap_id='{source_swap_id}', "
-                f"destination_swap_id='{destination_swap_id}', secret_hash='{secret_hash}'")
+    logger.info(f" {len(logs)} logs sent to Gemini for create_id: {create_id}")
+
 
     # Use a regular string with .format() to avoid backslash issues in f-string expressions
     prompt = (
@@ -86,7 +78,7 @@ def filter_logs(
         "using create_id, source_swap_id, destination_swap_id, or secret_hash. These logs are not chain-specific.\n"
         "Focus only on the information present in the logs. Do not generate or assume any information not explicitly stated. "
         "If no logs are provided, state that no relevant logs were found and do not proceed with analysis.\n\n"
-        "Logs:\n{filtered_log_result}"
+        "Logs:\n{logs}"
     ).format(
         create_id=create_id,
         source_swap_id=source_swap_id,
@@ -95,7 +87,7 @@ def filter_logs(
         source_chain=source_chain,
         destination_chain=destination_chain,
         container=container,
-        filtered_log_result=filtered_log_result
+        logs=logs
     )
 
     try:
@@ -107,13 +99,13 @@ def filter_logs(
         gemini_output = gemini_response.text.strip() if gemini_response.text else "No analysis available."
         logger.info(f"Gemini analysis completed for create_id: {create_id}, container: {container}")
         return {
-            "filtered_logs": filtered_logs,
+            "filtered_logs": logs,
             "analysis": gemini_output
         }
     except Exception as e:
         logger.error(f"Gemini API error during log analysis for create_id '{create_id}': {str(e)}")
         return {
-            "filtered_logs": filtered_logs,
+            "filtered_logs": logs,
             "analysis": f"Gemini API error during log analysis: {str(e)}"
         }
 
@@ -199,14 +191,9 @@ def transaction_status(initiator_source_address: str = None, create_id: str = No
             
             for container in containers_to_fetch:
                 try:
-                    log_result = fetch_logs(order_id, start_time, container)
+                    log_result = fetch_logs(order_id, start_time, container, source_swap_id, destination_swap_id, secret_hash)
                     log_key = container.lstrip('/')
-                    result["logs"][log_key] = {
-                        "raw_logs": log_result["raw_log_list"],
-                        "start_time": start_time,
-                        "end_time": log_result["end_time"]  # Updated to use end_time from fetch_logs
-                    }
-                    
+                                       
                     if container == Config.EVM_RELAY_CONTAINER:
                         create_order_success = analyze_evm_relay_logs(order_id, log_result["raw_log_list"])
                         result["logs"][log_key]["create_order_success"] = create_order_success
@@ -225,7 +212,7 @@ def transaction_status(initiator_source_address: str = None, create_id: str = No
                         result["logs"][log_key]["filtered_logs"] = analysis["filtered_logs"]
                         result["logs"][log_key]["analysis"] = analysis["analysis"]
                 except Exception as e:
-                    logger.error(f"Error fetching logs from {container}: {str(e)}")
+                    logger.error(f"Error fetching ensembles from {container}: {str(e)}")
                     result["logs"][container.lstrip('/')] = {"error": f"Error fetching logs: {str(e)}"}
         
         if order_id:
