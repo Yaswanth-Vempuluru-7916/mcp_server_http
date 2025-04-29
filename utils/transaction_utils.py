@@ -1,5 +1,6 @@
 # transaction_utils.py
 import time
+import json
 from dateutil import parser
 import google.generativeai as genai
 from utils.config import Config
@@ -39,6 +40,49 @@ def analyze_evm_relay_logs(create_id: str, logs: list) -> bool:
     except Exception as e:
         logger.warning(f"Gemini API error: {str(e)}. Falling back to manual check.")
         return any(create_id in msg for msg in logs)
+def filter_unique_logs(logs: list, container: str) -> list:
+    """
+    Filter unique JSON logs for staging-cobi-v2 or stage-bit-ponder, keeping the most recent one
+    based on timestamp for duplicates. Uses msg and other fields to identify duplicates.
+    """
+    logger.info(f"Filtering {len(logs)} logs for container: {container}")
+    unique_logs = {}
+    
+    for log in logs:
+        try:
+            # Parse JSON log
+            log_dict = json.loads(log)
+            msg = log_dict.get("msg", "")
+            # Create a key based on relevant fields to identify duplicates
+            log_key = (
+                msg,
+                log_dict.get("createID", ""),
+                log_dict.get("action", ""),
+                log_dict.get("order", ""),
+                log_dict.get("chain", "")
+            )
+            timestamp = log_dict.get("ts", 0)
+            if not isinstance(timestamp, (int, float)):
+                logger.warning(f"Invalid timestamp in JSON log: {log}")
+                continue
+            
+            # Update if this log is newer or no entry exists
+            if log_key not in unique_logs or timestamp > unique_logs[log_key]["timestamp"]:
+                unique_logs[log_key] = {
+                    "log": log,
+                    "timestamp": timestamp
+                }
+        except json.JSONDecodeError:
+            logger.warning(f"Invalid JSON log skipped in {container}: {log}")
+            continue
+        except Exception as e:
+            logger.error(f"Error processing log in {container}: {log}, error: {e}")
+            continue
+    
+    # Return the filtered logs in their original format
+    filtered_logs = [entry["log"] for entry in unique_logs.values()]
+    logger.info(f"Filtered to {len(filtered_logs)} unique logs for {container}")
+    return filtered_logs
 
 def analyze_logs(
     logs: list,
@@ -50,9 +94,16 @@ def analyze_logs(
     destination_chain: str,
     container: str
 ) -> dict:
+    logger.info(f"Received {len(logs)} logs for create_id: {create_id}, container: {container}")
     
-    logger.info(f" {len(logs)} logs sent to Gemini for create_id: {create_id}")
-
+    # Filter unique logs only for staging-cobi-v2 or stage-bit-ponder
+    if container in [Config.COBI_V2_CONTAINER, Config.BIT_PONDER_CONTAINER]:
+        filtered_logs = filter_unique_logs(logs, container)
+    else:
+        filtered_logs = logs  # No filtering for other containers
+        logger.info(f"No filtering applied for container: {container}")
+    
+    formatted_logs = '\n'.join(filtered_logs)    
     # Use a regular string with .format() to avoid backslash issues in f-string expressions
     prompt = (
         "Thoroughly analyze the following logs related to create_id '{create_id}', which may contain "
@@ -85,7 +136,7 @@ def analyze_logs(
         source_chain=source_chain,
         destination_chain=destination_chain,
         container=container,
-        logs=logs
+        logs=formatted_logs  # Use filtered logs
     )
 
     try:
@@ -97,13 +148,13 @@ def analyze_logs(
         gemini_output = gemini_response.text.strip() if gemini_response.text else "No analysis available."
         logger.info(f"Gemini analysis completed for create_id: {create_id}, container: {container}")
         return {
-            "filtered_logs": logs,
+            "filtered_logs": filtered_logs,
             "analysis": gemini_output
         }
     except Exception as e:
         logger.error(f"Gemini API error during log analysis for create_id '{create_id}': {str(e)}")
         return {
-             "filtered_logs": logs,
+            "filtered_logs": filtered_logs,
             "analysis": f"Gemini API error during log analysis: {str(e)}"
         }
 
@@ -167,15 +218,14 @@ def transaction_status(initiator_source_address: str = None, create_id: str = No
             start_time = unix_timestamp
             containers_to_fetch = []  
             
-            if source_chain == 'arbitrum_sepolia' or source_chain == 'ethereum_sepolia' or source_chain == 'citrea_testnet':
+            if source_chain in ['arbitrum_sepolia', 'ethereum_sepolia', 'citrea_testnet']:
                 containers_to_fetch.append(Config.EVM_RELAY_CONTAINER)
             elif source_chain == 'bitcoin_testnet':
                 containers_to_fetch.append(Config.BIT_PONDER_CONTAINER)
             elif source_chain == 'starknet_sepolia':
                 containers_to_fetch.append(Config.STARKNET_CONTAINER)
                 
-            
-            if destination_chain == 'arbitrum_sepolia' or destination_chain == 'ethereum_sepolia' or destination_chain == 'citrea_testnet':
+            if destination_chain in ['arbitrum_sepolia', 'ethereum_sepolia', 'citrea_testnet']:
                 containers_to_fetch.append(Config.EVM_RELAY_CONTAINER)
             elif destination_chain == 'bitcoin_testnet':
                 containers_to_fetch.append(Config.BIT_PONDER_CONTAINER)
