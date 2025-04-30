@@ -223,14 +223,16 @@ def transaction_status(initiator_source_address: str = None, create_id: str = No
             elif source_chain == 'bitcoin_testnet':
                 containers_to_fetch.append(Config.BIT_PONDER_CONTAINER)
             elif source_chain == 'starknet_sepolia':
-                containers_to_fetch.append(Config.STARKNET_CONTAINER)
+                containers_to_fetch.append(Config.STARKNET_RELAYER)
+                containers_to_fetch.append(Config.STARKNET_WATCHER)
                 
             if destination_chain in ['arbitrum_sepolia', 'ethereum_sepolia', 'citrea_testnet']:
                 containers_to_fetch.append(Config.EVM_RELAY_CONTAINER)
             elif destination_chain == 'bitcoin_testnet':
                 containers_to_fetch.append(Config.BIT_PONDER_CONTAINER)
             elif destination_chain == 'starknet_sepolia':
-                containers_to_fetch.append(Config.STARKNET_CONTAINER)
+                containers_to_fetch.append(Config.STARKNET_RELAYER)
+                containers_to_fetch.append(Config.STARKNET_WATCHER)
             
             containers_to_fetch = list(dict.fromkeys(containers_to_fetch))
             containers_to_fetch.append(Config.COBI_V2_CONTAINER)
