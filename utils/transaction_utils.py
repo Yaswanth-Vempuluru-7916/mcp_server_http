@@ -225,6 +225,9 @@ def transaction_status(initiator_source_address: str = None, create_id: str = No
             elif source_chain == 'starknet_sepolia':
                 containers_to_fetch.append(Config.STARKNET_RELAYER)
                 containers_to_fetch.append(Config.STARKNET_WATCHER)
+            elif source_chain == 'solana_testnet':
+                containers_to_fetch.append(Config.SOLANA_WATCHER)
+                containers_to_fetch.append(Config.SOLANA_RELAYER)
                 
             if destination_chain in ['arbitrum_sepolia', 'ethereum_sepolia', 'citrea_testnet']:
                 containers_to_fetch.append(Config.EVM_RELAY_CONTAINER)
@@ -233,6 +236,9 @@ def transaction_status(initiator_source_address: str = None, create_id: str = No
             elif destination_chain == 'starknet_sepolia':
                 containers_to_fetch.append(Config.STARKNET_RELAYER)
                 containers_to_fetch.append(Config.STARKNET_WATCHER)
+            elif destination_chain == 'solana_testnet':
+                containers_to_fetch.append(Config.SOLANA_WATCHER)
+                containers_to_fetch.append(Config.SOLANA_RELAYER)
             
             containers_to_fetch = list(dict.fromkeys(containers_to_fetch))
             containers_to_fetch.append(Config.COBI_V2_CONTAINER)

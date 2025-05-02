@@ -26,3 +26,5 @@ class Config:
     COBI_V2_CONTAINER = "/staging-cobi-v2"
     STARKNET_RELAYER = "/staging-starknet-relayer"
     STARKNET_WATCHER = "/starkner-watcher-staging"
+    SOLANA_WATCHER = "/solana-watcher-staging"
+    SOLANA_RELAYER = "/solana-relayer-staging"
