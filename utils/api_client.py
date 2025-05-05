@@ -32,16 +32,24 @@ def fetch_logs(
     
     raw_logs = []
     current_start = start_time
-    max_iterations = 100  # Prevent runaway loops
+    fetch_limit = 5000  
     iteration = 0
-    logger.info(f"Fetching logs for identifiers: {identifiers}")
+    recent_logs_fetched = False
+    logger.info(f"Fetching logs for identifiers: {identifiers}, container: {container}")
     
-    while iteration < max_iterations:
+    # Construct the query using |~ with regex pattern for all identifiers
+    regex_pattern = "|".join(map(str, identifiers))
+    query = quote_plus(f'{{container="{container}"}} |~ "{regex_pattern}"')
+    
+    while True:
         iteration += 1
-        # Construct the query using |~ with regex pattern for all identifiers
-        regex_pattern = "|".join(map(str, identifiers))
-        query = quote_plus(f'{{container="{container}"}} |~ "{regex_pattern}"')
-        url = f"{Config.BASE_URL}?query={query}&start={current_start}&limit={limit}&direction=forward"
+        # After 5 iterations, fetch recent logs without start/end/direction
+        if iteration > 5 and not recent_logs_fetched:
+            url = f"{Config.BASE_URL}?query={query}&limit={fetch_limit}"
+            recent_logs_fetched = True
+        else:
+            url = f"{Config.BASE_URL}?query={query}&start={current_start}&limit={fetch_limit}&direction=forward"
+        
         try:
             logger.info(f"Fetching logs from {url}")
             response = requests.get(url, headers={
@@ -51,47 +59,50 @@ def fetch_logs(
             response.raise_for_status()
             logs = response.json()
             log_entries = logs.get("data", {}).get("result", [])
-            oldest_timestamp = float('inf')  # For logging min timestamp
-            newest_timestamp = float('-inf')  # For logging max timestamp and next fetch
+            oldest_timestamp = float('inf')
+            newest_timestamp = float('-inf')
             
-            # Extract logs and find the oldest and newest timestamps
+            # Extract logs and find timestamps
             current_fetch_logs = []
             for entry in log_entries:
                 for ts, msg in entry.get("values", []):
                     current_fetch_logs.append(msg)
-                    # Loki timestamps are in nanoseconds, convert to seconds
                     ts_seconds = int(ts) // 1_000_000_000
                     oldest_timestamp = min(oldest_timestamp, ts_seconds)
                     newest_timestamp = max(newest_timestamp, ts_seconds)
             
             raw_logs.extend(current_fetch_logs)
-            logger.info(f"Fetched {len(current_fetch_logs)} logs from start time {current_start}")
+            logger.info(f"Iteration {iteration}: Fetched {len(current_fetch_logs)} logs from start time {current_start if not recent_logs_fetched else 'recent'}")
             if current_fetch_logs:
                 logger.info(f"Timestamp range: min={oldest_timestamp}, max={newest_timestamp}")
             else:
                 logger.info("No timestamps available (empty response)")
             
-            # If no logs or fewer than limit, no more logs to fetch
-            if not current_fetch_logs or len(current_fetch_logs) < limit:
-                logger.info(f"Stopping: Fetched {len(current_fetch_logs)} logs, less than limit {limit}")
+            # Stop if no logs or fewer than limit (except for recent fetch)
+            if not current_fetch_logs or (len(current_fetch_logs) < fetch_limit and not recent_logs_fetched):
+                logger.info(f"Stopping: Fetched {len(current_fetch_logs)} logs, less than limit {fetch_limit}")
+                break
+            
+            # For recent logs fetch, stop after one request
+            if recent_logs_fetched:
+                logger.info("Completed recent logs fetch. Stopping.")
                 break
             
             # If no valid timestamps, stop
             if newest_timestamp == float('-inf'):
-                logger.warning(f"No valid timestamps found in fetched logs. Stopping.")
+                logger.warning(f"No valid timestamps found. Stopping.")
                 break
             
-            # Update for next iteration using newest timestamp
+            # Update start to newest timestamp for next iteration
             current_start = newest_timestamp
-            logger.info(f"Hit limit of {limit} logs. Newest timestamp: {newest_timestamp}, next start: {current_start}")
-            logger.info(f"Fetching again from {current_start}")
+            logger.info(f"Hit limit of {fetch_limit} logs. Newest timestamp: {newest_timestamp}, next start: {current_start}")
+            
+            # Avoid rate limiting
+            time.sleep(0.5)  # 0.5-second delay
         
         except RequestException as e:
             logger.error(f"Request failed for {url}: {e}")
             raise RuntimeError(f"Request failed for container '{container}' with identifiers: {e}")
-    
-    if iteration >= max_iterations:
-        logger.warning(f"Reached maximum iterations ({max_iterations}). Stopping to prevent infinite loop.")
     
     logger.info(f"Total fetched {len(raw_logs)} logs from container: {container}")
     

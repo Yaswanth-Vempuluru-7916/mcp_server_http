@@ -40,17 +40,20 @@ def analyze_evm_relay_logs(create_id: str, logs: list) -> bool:
     except Exception as e:
         logger.warning(f"Gemini API error: {str(e)}. Falling back to manual check.")
         return any(create_id in msg for msg in logs)
+    
 def filter_unique_logs(logs: list, container: str) -> list:
     """
-    Filter unique JSON logs for staging-cobi-v2 or stage-bit-ponder, keeping the most recent one
-    based on timestamp for duplicates. Uses msg and other fields to identify duplicates.
+    Filter unique JSON and non-JSON logs for staging-cobi-v2 or stage-bit-ponder, keeping the most recent
+    JSON log based on timestamp for duplicates and only one instance of each non-JSON log.
+    JSON logs use msg and other fields to identify duplicates. Non-JSON logs are deduplicated by message.
     """
     logger.info(f"Filtering {len(logs)} logs for container: {container}")
-    unique_logs = {}
+    unique_logs = {}  # For JSON logs
+    unique_non_json_logs = set()  # For unique non-JSON logs
     
     for log in logs:
         try:
-            # Parse JSON log
+            # Try to parse the log as JSON
             log_dict = json.loads(log)
             msg = log_dict.get("msg", "")
             # Create a key based on relevant fields to identify duplicates
@@ -73,15 +76,16 @@ def filter_unique_logs(logs: list, container: str) -> list:
                     "timestamp": timestamp
                 }
         except json.JSONDecodeError:
-            logger.warning(f"Invalid JSON log skipped in {container}: {log}")
-            continue
+            # If not valid JSON, add to unique_non_json_logs if not already present
+            if log not in unique_non_json_logs:
+                unique_non_json_logs.add(log)
         except Exception as e:
             logger.error(f"Error processing log in {container}: {log}, error: {e}")
             continue
     
-    # Return the filtered logs in their original format
-    filtered_logs = [entry["log"] for entry in unique_logs.values()]
-    logger.info(f"Filtered to {len(filtered_logs)} unique logs for {container}")
+    # Combine filtered JSON logs and unique non-JSON logs
+    filtered_logs = [entry["log"] for entry in unique_logs.values()] + list(unique_non_json_logs)
+    logger.info(f"Filtered to {len(filtered_logs)} logs for {container} ({len(unique_logs)} unique JSON, {len(unique_non_json_logs)} unique non-JSON)")
     return filtered_logs
 
 def analyze_logs(
